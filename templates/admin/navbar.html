@@ -1,0 +1,72 @@
+<!-- Tailwind CSS Script (Included here ensuring availability across pages using navbar) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+</style>
+
+<nav class="bg-gradient-to-r from-slate-900 to-indigo-900 p-4 shadow-lg border-b border-white/10">
+    <div class="container mx-auto flex flex-col md:flex-row items-center justify-between">
+
+        <!-- Brand / Left Links -->
+        <div class="flex items-center gap-6 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
+            <a href="/admin/dashboard"
+                class="flex items-center gap-2 text-white/90 hover:text-white transition-all hover:scale-105 font-medium whitespace-nowrap">
+                <span class="text-xl">🏠</span>
+                <span class="hidden sm:inline">Home</span>
+            </a>
+
+            <a href="/admin/students"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>👨‍🎓</span>
+                <span>Students</span>
+            </a>
+
+            <a href="/admin/results"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>📊</span>
+                <span>Results</span>
+            </a>
+
+            <a href="/admin/exams"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>📝</span>
+                <span>Exams</span>
+            </a>
+            <a href="/admin/custom-exam-results"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>📝</span>
+                <span>Custom Scores</span>
+            </a>
+
+            <a href="/admin/create_questions"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>🛠️</span>
+                <span>Question Builder</span>
+            </a>
+
+            <a href="/admin/add_company"
+                class="flex items-center gap-2 text-white/80 hover:text-yellow-300 transition-colors font-medium whitespace-nowrap">
+                <span>🏢</span>
+                <span>Add Company</span>
+            </a>
+        </div>
+
+        <!-- Right Side / Logout -->
+        <div class="mt-4 md:mt-0 flex-shrink-0">
+            <a href="/admin/logout"
+                class="group flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 px-4 py-2 rounded-lg transition-all duration-300">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="group-hover:-translate-x-1 transition-transform">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" x2="9" y1="12" y2="12" />
+                </svg>
+                <span class="font-semibold text-sm">Logout</span>
+            </a>
+        </div>
+    </div>
+</nav>
