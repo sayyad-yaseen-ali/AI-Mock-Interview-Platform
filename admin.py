@@ -1,0 +1,364 @@
+from flask import Blueprint, render_template, request, redirect, session, flash
+import sqlite3, json
+from werkzeug.security import check_password_hash
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+import os
+from flask import render_template, redirect, session, url_for
+import pandas as pd
+from flask import Blueprint, render_template, request, redirect, session, url_for, send_file
+
+
+admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+from admin_helpers import get_filter_options
+
+# ---------------- DATABASE ----------------
+def get_db():
+    return sqlite3.connect("database.db")
+
+
+# ---------------- ADMIN LOGIN ----------------
+@admin_bp.route("/login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        db = get_db()
+        cur = db.cursor()
+        cur.execute("SELECT * FROM admins WHERE username=?", (username,))
+        admin = cur.fetchone()
+        db.close()
+
+        if admin and check_password_hash(admin[2], password):
+            session["admin"] = username
+            return redirect("/admin/dashboard")
+
+        return "Invalid admin credentials"
+
+    return render_template("admin/login.html")
+
+
+# ---------------- ADMIN DASHBOARD (HOME) ----------------
+@admin_bp.route("/dashboard")
+def dashboard():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    return render_template("admin/dashboard.html")
+
+
+# ---------------- STUDENTS PAGE ----------------
+# ---------------- STUDENTS PAGE ----------------
+@admin_bp.route("/students")
+def students():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    db = get_db()
+    
+    # Filters
+    college_filter = request.args.get("college")
+    branch_filter = request.args.get("branch")
+    
+    query = "SELECT name, college, branch, year FROM users WHERE 1=1"
+    params = []
+    
+    if college_filter:
+        query += " AND college = ?"
+        params.append(college_filter)
+        
+    if branch_filter:
+        query += " AND branch = ?"
+        params.append(branch_filter)
+        
+    students = db.execute(query, params).fetchall()
+    
+    # Get filter options
+    colleges, branches = get_filter_options()
+    
+    db.close()
+
+    return render_template("admin/students.html", students=students, colleges=colleges, branches=branches)
+
+
+
+# ---------------- RESULTS PAGE ----------------
+@admin_bp.route("/results")
+def results():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    # Connect to DB and fetch results
+    db = get_db()
+    
+    # Filters
+    college_filter = request.args.get("college")
+    branch_filter = request.args.get("branch")
+    
+    query = """
+        SELECT u.name, c.name, r.round_name, s.score
+        FROM scores s
+        JOIN users u ON s.user_id = u.id
+        JOIN companies c ON s.company_id = c.id
+        JOIN rounds r ON s.round_id = r.id
+        WHERE 1=1
+    """
+    params = []
+
+    if college_filter:
+        query += " AND u.college = ?"
+        params.append(college_filter)
+        
+    if branch_filter:
+        query += " AND u.branch = ?"
+        params.append(branch_filter)
+        
+    results_data = db.execute(query, params).fetchall()
+    
+    # Get filter options
+    colleges, branches = get_filter_options()
+    
+    db.close()
+
+    # Convert to pandas DataFrame for plotting
+    df = pd.DataFrame(results_data, columns=['Student','Company','Round','Score'])
+
+    # Ensure plots folder exists
+    plot_dir = os.path.join("static", "plots")
+    os.makedirs(plot_dir, exist_ok=True)
+
+    # --------- 1️⃣ Score Distribution Histogram ---------
+    plt.figure(figsize=(6,4))
+    plt.hist(df['Score'], bins=range(int(df['Score'].min()), int(df['Score'].max())+2),
+             color='#667eea', edgecolor='black')
+    plt.title('Score Distribution')
+    plt.xlabel('Score')
+    plt.ylabel('Number of Students')
+    plt.tight_layout()
+    score_hist_path = os.path.join(plot_dir, 'score_hist.png')
+    plt.savefig(score_hist_path)
+    plt.close()
+
+    # --------- 2️⃣ Average Score per Company Bar Chart ---------
+    avg_scores = df.groupby('Company')['Score'].mean().reset_index()
+    plt.figure(figsize=(6,4))
+    plt.bar(avg_scores['Company'], avg_scores['Score'], color='#764ba2')
+    plt.title('Average Score per Company')
+    plt.ylabel('Average Score')
+    plt.xticks(rotation=25, ha='right')
+    plt.tight_layout()
+    company_scores_path = os.path.join(plot_dir, 'company_scores.png')
+    plt.savefig(company_scores_path)
+    plt.close()
+
+    # Pass results and plot URLs to template
+    return render_template(
+        "admin/results.html",
+        results=results_data,
+        score_hist_url=url_for('static', filename='plots/score_hist.png'),
+        company_scores_url=url_for('static', filename='plots/company_scores.png'),
+        colleges=colleges,
+        branches=branches
+    )
+
+# ---------------- CUSTOM EXAM RESULTS PAGE ----------------
+@admin_bp.route("/custom-exam-results")
+def custom_exam_results():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    db = get_db()
+    
+    # Filters
+    college_filter = request.args.get("college")
+    branch_filter = request.args.get("branch")
+    
+    query = """
+        SELECT 
+            u.name,
+            c.exam_name,
+            c.score,
+            c.total,
+            c.attempted_at
+        FROM custom_exam_scores c
+        JOIN users u ON c.user_id = u.id
+        WHERE 1=1
+    """
+    params = []
+    
+    if college_filter:
+        query += " AND u.college = ?"
+        params.append(college_filter)
+        
+    if branch_filter:
+        query += " AND u.branch = ?"
+        params.append(branch_filter)
+        
+    query += " ORDER BY c.attempted_at DESC"
+    
+    results = db.execute(query, params).fetchall()
+    
+    # Get filter options
+    colleges, branches = get_filter_options()
+    
+    db.close()
+
+    return render_template(
+        "admin/custom_exam_results.html",
+        results=results,
+        colleges=colleges,
+        branches=branches
+    )
+
+
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+TEMPLATE_JSON = os.path.join(os.getcwd(), "template.json")
+
+# ---------------- EXAMS PAGE ----------------
+@admin_bp.route("/exams", methods=["GET", "POST"])
+def exams():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    message = ""
+    if request.method == "POST":
+        exam_name = request.form["exam_name"].strip()
+        college = request.form["college"].strip()
+        start_time = request.form["start_time"].replace("T", " ")
+        end_time = request.form["end_time"].replace("T", " ")
+        file = request.files["json_file"]
+
+        if not exam_name or not file:
+            message = "Please enter exam name and select a JSON file."
+        else:
+            try:
+                data = json.load(file)
+
+                # Validate JSON format
+                required_keys = {"question", "options", "correct_answer"}
+                for q in data:
+                    if set(q.keys()) != required_keys:
+                        raise ValueError(f"Invalid keys in JSON. Expected exactly {required_keys}, found {set(q.keys())}")
+                    if not isinstance(q["options"], dict):
+                        raise ValueError("Options must be a dictionary.")
+
+                # Save JSON locally
+                filename = f"{exam_name.replace(' ','_')}_custom.json"
+                filepath = os.path.join(UPLOAD_FOLDER, filename)
+                with open(filepath, "w") as f:
+                    json.dump(data, f, indent=4)
+
+                # Save to Database
+                db = get_db()
+                db.execute("""
+                    INSERT INTO custom_exams (exam_name, college, start_time, end_time)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(exam_name) DO UPDATE SET
+                        college=excluded.college,
+                        start_time=excluded.start_time,
+                        end_time=excluded.end_time
+                """, (exam_name, college, start_time, end_time))
+                db.commit()
+                db.close()
+
+                message = f"Exam '{exam_name}' submitted successfully!"
+
+            except Exception as e:
+                message = f"Error: {str(e)}"
+
+    # Fetch exams from DB
+    db = get_db()
+    exams_list = db.execute("SELECT * FROM custom_exams").fetchall()
+    
+    # Fetch unique colleges
+    colleges = [row[0] for row in db.execute("SELECT DISTINCT college FROM users WHERE college IS NOT NULL AND college != ''").fetchall()]
+    db.close()
+
+    return render_template("admin/exams.html",
+                           exams=exams_list,
+                           colleges=colleges,
+                           message=message)
+
+
+@admin_bp.route("/download_template")
+def download_template():
+    if os.path.exists(TEMPLATE_JSON):
+        return send_file(TEMPLATE_JSON, as_attachment=True)
+    else:
+        return "Template JSON not found."
+
+# ---------------- ADD COMPANY PAGE ----------------
+def get_round_type(name):
+    name = name.lower()
+    if "mcq" in name:
+        return "mcq"
+    if "coding" in name:
+        return "coding"
+    if "communication" in name:
+        return "communication"
+    if "technical" in name:
+        return "technical"
+    if "hr" in name:
+        return "hr"
+    if "reasoning" in name:
+        return "reasoning"
+    return "mcq"
+
+@admin_bp.route("/add_company", methods=["GET", "POST"])
+def add_company():
+    if "admin" not in session:
+        return redirect("/admin/login")
+
+    if request.method == "POST":
+        company_name = request.form.get("company_name").strip()
+        rounds = request.form.getlist("rounds[]")
+
+        if not company_name or not rounds:
+            flash("Company name and at least one round are required.", "error")
+            return redirect("/admin/add_company")
+
+        db = get_db()
+        try:
+            # Insert Company
+            db.execute("INSERT INTO companies (name) VALUES (?)", (company_name,))
+            company_id = db.execute("SELECT id FROM companies WHERE name = ?", (company_name,)).fetchone()[0]
+
+            # Insert Rounds
+            for round_name in rounds:
+                round_name = round_name.strip()
+                if round_name:
+                    db.execute("""
+                        INSERT INTO rounds (company_id, round_name, round_type)
+                        VALUES (?, ?, ?)
+                    """, (company_id, round_name, get_round_type(round_name)))
+            
+            db.commit()
+            flash(f"Company '{company_name}' added successfully!", "success")
+        except sqlite3.IntegrityError:
+            flash(f"Company '{company_name}' already exists.", "error")
+        except Exception as e:
+            flash(f"An error occurred: {str(e)}", "error")
+        finally:
+            db.close()
+
+        return redirect("/admin/add_company")
+
+    return render_template("admin/add_company.html")
+
+
+@admin_bp.route("/create_questions")
+def create_questions():
+    if "admin" not in session:
+        return redirect("/admin/login")
+    return render_template("admin/create_questions.html")
+
+
+# ---------------- LOGOUT ----------------
+@admin_bp.route("/logout")
+def logout():
+    session.pop("admin", None)
+    return redirect("/admin/login")
