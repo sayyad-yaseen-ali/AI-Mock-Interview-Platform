@@ -1,0 +1,67 @@
+from flask import Blueprint, render_template, redirect, session
+import sqlite3
+
+companies_bp = Blueprint("companies", __name__)
+
+def get_db():
+    conn = sqlite3.connect("database.db", timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
+
+
+@companies_bp.route("/companies")
+def companies():
+    if "user_id" not in session:
+        return redirect("/")
+
+    db = get_db()
+    companies = db.execute("SELECT id, name FROM companies where id!=0").fetchall()
+    db.close()
+
+    return render_template("companies.html", companies=companies)
+
+
+@companies_bp.route("/rounds/<int:company_id>")
+def rounds(company_id):
+    if "user_id" not in session:
+        return redirect("/")
+
+    db = get_db()
+    company = db.execute(
+        "SELECT name FROM companies WHERE id=?", (company_id,)
+    ).fetchone()[0]
+
+    rounds = db.execute(
+        "SELECT id, round_name FROM rounds WHERE company_id=?",
+        (company_id,)
+    ).fetchall()
+    db.close()
+
+    return render_template("rounds.html", company=company, rounds=rounds)
+
+
+@companies_bp.route("/round/<int:round_id>")
+def round_page(round_id):
+    return redirect(f"/exam/{round_id}")
+
+
+# ---------------- ALL ROUNDS (GENERIC) ----------------
+@companies_bp.route("/all_rounds")
+def all_rounds():
+    if "user_id" not in session:
+        return redirect("/")
+
+    db = get_db()
+    
+    # Fetch unique rounds (by name) acting as "generic" rounds
+    # We take the first ID found for each unique name to allow starting THAT exam
+    query = """
+        SELECT MIN(id), round_name, round_type
+        FROM rounds 
+        GROUP BY round_name
+        ORDER BY round_name
+    """
+    rounds = db.execute(query).fetchall()
+    db.close()
+
+    return render_template("all_rounds.html", rounds=rounds)
